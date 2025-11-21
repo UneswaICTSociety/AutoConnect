@@ -666,8 +666,10 @@ class ProxyManager:
             self.manager = LinuxProxyManager()
 
     def enable_proxy(self):
-        
-        return self.manager.enable_proxy()
+        if self.os_type == "Windows":
+            return self.manager.enable_pac()
+        else:
+            return self.manager.enable_proxy()
 
     def disable_proxy(self):
         

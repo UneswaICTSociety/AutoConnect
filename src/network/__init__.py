@@ -123,7 +123,7 @@ class NetworkManager:
 
             # register the device (not critical if it fails)
             print("[Setup] Step 2/3: Registering device...")
-            reg = self.registry.register_device(student_id, birthday_ddmmyy, campus)
+            reg = self.registry.register_device(student_id, birthday_ddmmyy)
             results["registration"] = {
                 "success": reg.success,
                 "message": reg.message,

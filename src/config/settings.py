@@ -42,7 +42,7 @@ EXPECTED_PASSWORD_LENGTH = 14  # 6 (Uneswa) + 8 (ddmmyyyy) = 14
 
 # UI Configuration
 UI_THEME = "dark"
-UI_COLOR_THEME = ["blue", "green", "yellow"][random.randint(0, 2)]
+UI_COLOR_THEME = ["blue", "green"][random.randint(0, 1)]
 UI_WINDOW_SIZE = "520x700"
 UI_RESIZABLE = True
 

@@ -13,7 +13,7 @@ TRANSLATIONS = {
     },
     "connection_success": {
         "en": "Successfully connected to UNESWA WiFi",
-        "ss": "Ukhonile kuxhumeka ku-UNESWA WiFi",
+        "ss": "Uxhumeke ngemphumelelo ku-UNESWA WiFi",
     },
     "connection_failed": {
         "en": "Connection failed",
@@ -73,7 +73,7 @@ TRANSLATIONS = {
     },
     "network_not_found": {
         "en": "Network '{ssid}' not found - are you in range?",
-        "ss": "Inethiwekhi '{ssid}' ayitfolakali - ingabe use-range?",
+        "ss": "Inethiwekhi '{ssid}' ayitfolakali - ingabe useduze?",
     },
     "disconnected": {
         "en": "Disconnected from WiFi",

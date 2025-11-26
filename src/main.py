@@ -1,23 +1,24 @@
-import sys
-import os
 import argparse
+import os
 import platform
+import sys
 from pathlib import Path
+from typing import Optional
 
 src_dir = Path(__file__).parent
 sys.path.insert(0, str(src_dir))
 
 try:
-    from src.config import APP_NAME, VERSION, DEBUG_MODE
+    from src.config import APP_NAME, DEBUG_MODE, VERSION
+    from src.network import network_manager
+    from src.ui import main as ui_main
     from src.utils import (
-        system_info,
-        is_admin,
         can_configure_network,
         get_os_type,
+        is_admin,
         request_admin_elevation,
+        system_info,
     )
-    from src.ui import main as ui_main
-    from src.network import network_manager
 
 except ImportError as e:
     print(f"Import error: {e}")
@@ -64,8 +65,8 @@ def check_system_requirements():
 def check_dependencies():
     required_modules = [
         "customtkinter",  # Modern UI framework
-        "requests",       # HTTP requests for registration portal
-        "psutil",         # System/process utilities
+        "requests",  # HTTP requests for registration portal
+        "psutil",  # System/process utilities
     ]
 
     # Platform-specific requirements
@@ -98,7 +99,7 @@ def print_system_info():
 def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=APP_NAME,
-    description="University WiFi AutoConnect - Network setup helper for UNESWA",
+        description="University WiFi AutoConnect - Network setup helper for UNESWA",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -221,18 +222,19 @@ def main():
         os.environ["UNESWA_DEBUG"] = "true"
         print("Debug mode enabled")
 
-
     if get_os_type() == "Windows" and not is_admin():
-        print(f"{APP_NAME} requires administrator privileges to configure network settings.")
+        print(
+            f"{APP_NAME} requires administrator privileges to configure network settings."
+        )
         print("Requesting elevation...")
-        
 
         if not request_admin_elevation():
             print("\nAdministrator privileges are required to run this application.")
-            print("Please right-click the application and select 'Run as administrator'.")
+            print(
+                "Please right-click the application and select 'Run as administrator'."
+            )
             input("\nPress Enter to exit...")
             return 1
-        
 
         return 0
 
@@ -252,7 +254,6 @@ def main():
         print("System issues detected:")
         for issue in req_issues:
             print(f"   • {issue}")
-
 
         try:
             response = input("\nContinue anyway? (y/N): ").lower().strip()
@@ -299,5 +300,3 @@ def main():
 if __name__ == "__main__":
     exit_code = main()
     sys.exit(exit_code)
-
-

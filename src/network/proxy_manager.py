@@ -355,6 +355,7 @@ class LinuxProxyManager:
             with open(temp_file, "w") as f:
                 f.writelines(lines)
 
+            print("[Proxy] Requesting root privileges to update dnf.conf...")
             success, stdout, stderr = run_cmd(
                 ["pkexec", "cp", str(temp_file), str(dnf_config)], timeout=10
             )
@@ -378,14 +379,21 @@ class LinuxProxyManager:
             if not ok:
                 return False, "gsettings not available"
 
-            # Mode manual and set hosts/ports
-            cmds = [
-                ["gsettings", "set", "org.gnome.system.proxy", "mode", "manual"],
-                ["gsettings", "set", "org.gnome.system.proxy.http", "host", PROXY_HOST],
-                ["gsettings", "set", "org.gnome.system.proxy.http", "port", str(PROXY_PORT)],
-                ["gsettings", "set", "org.gnome.system.proxy.https", "host", PROXY_HOST],
-                ["gsettings", "set", "org.gnome.system.proxy.https", "port", str(PROXY_PORT)],
-            ]
+            # Use PAC if available, otherwise manual
+            if PROXY_PAC_URL:
+                cmds = [
+                    ["gsettings", "set", "org.gnome.system.proxy", "mode", "auto"],
+                    ["gsettings", "set", "org.gnome.system.proxy", "autoconfig-url", PROXY_PAC_URL],
+                ]
+            else:
+                cmds = [
+                    ["gsettings", "set", "org.gnome.system.proxy", "mode", "manual"],
+                    ["gsettings", "set", "org.gnome.system.proxy.http", "host", PROXY_HOST],
+                    ["gsettings", "set", "org.gnome.system.proxy.http", "port", str(PROXY_PORT)],
+                    ["gsettings", "set", "org.gnome.system.proxy.https", "host", PROXY_HOST],
+                    ["gsettings", "set", "org.gnome.system.proxy.https", "port", str(PROXY_PORT)],
+                ]
+            
             for cmd in cmds:
                 run_cmd(cmd, timeout=5)
             return True, "GNOME proxy configured"
@@ -400,6 +408,7 @@ class LinuxProxyManager:
             if not ok:
                 return False, "gsettings not available"
             run_cmd(["gsettings", "set", "org.gnome.system.proxy", "mode", "none"], timeout=5)
+            run_cmd(["gsettings", "reset", "org.gnome.system.proxy", "autoconfig-url"], timeout=5)
             return True, "GNOME proxy disabled"
         except Exception as e:
             return False, f"GNOME disable error: {e}"
@@ -411,39 +420,37 @@ class LinuxProxyManager:
             ok, _, _ = run_cmd(["which", "kwriteconfig5"], timeout=5)
             if not ok:
                 return False, "kwriteconfig5 not available"
-            proxy_url = f"http://{PROXY_HOST}:{PROXY_PORT}"
-            cmds = [
-                [
-                    "kwriteconfig5",
-                    "--file",
-                    "kioslaverc",
-                    "--group",
-                    "Proxy Settings",
-                    "--key",
-                    "ProxyType",
-                    "1",
-                ],
-                [
-                    "kwriteconfig5",
-                    "--file",
-                    "kioslaverc",
-                    "--group",
-                    "Proxy Settings",
-                    "--key",
-                    "httpProxy",
-                    proxy_url,
-                ],
-                [
-                    "kwriteconfig5",
-                    "--file",
-                    "kioslaverc",
-                    "--group",
-                    "Proxy Settings",
-                    "--key",
-                    "httpsProxy",
-                    proxy_url,
-                ],
-            ]
+            
+            if PROXY_PAC_URL:
+                # Type 2 is PAC/Script
+                cmds = [
+                    [
+                        "kwriteconfig5", "--file", "kioslaverc", "--group", "Proxy Settings",
+                        "--key", "ProxyType", "2"
+                    ],
+                    [
+                        "kwriteconfig5", "--file", "kioslaverc", "--group", "Proxy Settings",
+                        "--key", "ProxyConfigScript", PROXY_PAC_URL
+                    ],
+                ]
+            else:
+                # Type 1 is Manual
+                proxy_url = f"http://{PROXY_HOST}:{PROXY_PORT}"
+                cmds = [
+                    [
+                        "kwriteconfig5", "--file", "kioslaverc", "--group", "Proxy Settings",
+                        "--key", "ProxyType", "1"
+                    ],
+                    [
+                        "kwriteconfig5", "--file", "kioslaverc", "--group", "Proxy Settings",
+                        "--key", "httpProxy", proxy_url
+                    ],
+                    [
+                        "kwriteconfig5", "--file", "kioslaverc", "--group", "Proxy Settings",
+                        "--key", "httpsProxy", proxy_url
+                    ],
+                ]
+
             for cmd in cmds:
                 run_cmd(cmd, timeout=5)
             return True, "KDE proxy configured"

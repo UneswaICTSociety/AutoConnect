@@ -67,7 +67,7 @@ class DeviceRegistrationManager:
                                 details={"url": url, "status_code": r.status_code},
                             )
 
-                        if "already registered" in body_text:
+                        if "already registered" in body_text or "hardware already registered" in body_text:
                             return RegistrationResult(
                                 success=True,
                                 message="Device is already registered",

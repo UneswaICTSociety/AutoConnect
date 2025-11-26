@@ -10,7 +10,7 @@ DEVELOPER = "ICT Society - University of Eswatini"
 # Network Configuration
 WIFI_SSID = "uniswawifi-students"
 WIFI_SECURITY = "WPA2-Enterprise"
-WIFI_EAP_METHOD = "PEAP"
+WIFI_EAP_METHOD = "PEAP" #on windows for now. Linux accepts ttls for some reason??? Uneswa network guys, please explain if you see this
 WIFI_PHASE2_AUTH = "MSCHAPv2"
 
 # Proxy Configuration (Manual Proxy - NOT PAC)
@@ -73,7 +73,7 @@ LOG_BACKUP_COUNT = 3
 # Network Timeouts
 CONNECTION_TIMEOUT = 10
 REGISTRATION_TIMEOUT = 15
-WIFI_CONNECT_TIMEOUT = 30
+WIFI_CONNECT_TIMEOUT = 60
 PROXY_TEST_TIMEOUT = 5
 
 # Background Service Configuration

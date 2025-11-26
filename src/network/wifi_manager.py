@@ -664,8 +664,20 @@ class LinuxWiFiManager:
                 "wpa-eap",
                 "802-1x.identity",
                 credentials.get_username(),
+                "802-1x.anonymous-identity",
+                credentials.get_username(),
                 "802-1x.password",
                 password,
+                "802-1x.eap",
+                "ttls",
+                "802-1x.phase2-auth",
+                "mschapv2",
+                "802-1x.system-ca-certs",
+                "no",
+                "802-1x.password-flags",
+                "0",
+                "connection.autoconnect",
+                "yes",
             ]
 
             success, stdout, stderr = run_cmd(cmd, timeout=WIFI_CONNECT_TIMEOUT)

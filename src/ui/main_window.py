@@ -1,39 +1,21 @@
-import customtkinter as ctk
-import tkinter.messagebox as msgbox
 import threading
 import time
-
+import tkinter.messagebox as msgbox
 from pathlib import Path
+from typing import Optional, Callable
 
-from src.config import (
-    APP_NAME,
-    VERSION,
-    UI_THEME,
-    UI_COLOR_THEME,
-    UI_WINDOW_SIZE,
-    UI_RESIZABLE,
-    STATUS_MESSAGES,
-    ERROR_MESSAGES,
-    SUCCESS_MESSAGES,
-    PASSWORD_FORMAT_HINT,
-    MONITOR_INTERVAL,
-    SCROLLABLE_FRAME_CORNER_RADIUS,
-    SCROLLBAR_BUTTON_COLOR,
-    SCROLLBAR_BUTTON_HOVER_COLOR,
-    MIN_WINDOW_WIDTH,
-    MIN_WINDOW_HEIGHT,
-)
+import customtkinter as ctk
 
+from src.config import (APP_NAME, ERROR_MESSAGES, MIN_WINDOW_HEIGHT,
+                        MIN_WINDOW_WIDTH, MONITOR_INTERVAL,
+                        PASSWORD_FORMAT_HINT, SCROLLABLE_FRAME_CORNER_RADIUS,
+                        SCROLLBAR_BUTTON_COLOR, SCROLLBAR_BUTTON_HOVER_COLOR,
+                        STATUS_MESSAGES, SUCCESS_MESSAGES, UI_COLOR_THEME,
+                        UI_RESIZABLE, UI_THEME, UI_WINDOW_SIZE, VERSION)
 from src.network import network_manager
-from src.utils import (
-    is_admin,
-    can_configure_network,
-    get_os_type,
-    get_distro_id,
-    system_info,
-    run_quick_test,
-)
-from src.utils.credentials import save_credentials, load_credentials
+from src.utils import (can_configure_network, get_distro_id, get_os_type,
+                       is_admin, run_quick_test, system_info)
+from src.utils.credentials import load_credentials, save_credentials
 
 # Translations for key UI labels (English + siSwati)
 TRANSLATIONS = {
@@ -57,13 +39,15 @@ TRANSLATIONS = {
         "student_id": "Inombolo Yemfundzi:",
         "birthday": "Lusuku Lwekutalwa:",
         "birthday_hint": PASSWORD_FORMAT_HINT,  # keep original hint text for now
-        "complete_setup": "Cwedza kwalungiselela",
+        "complete_setup": "Cedza kwalungiselela",
         "wifi_only": "WiFi kuphela",
         "proxy_only": "Proxy kuphela",
         "register_device": "Bhalisa lidivaysi",
         "test_connection": "Hlola kuxhumeka",
         "reset_uneswa": "Buyisela UNESWA kuphela",
         "activity_log": "Umbhalo wekwentiwa",
+        "Proxy: Not configured":"Proxy: Ayikawu Configarishiwa",
+        "Status: Not connected":"Status: Ayika khonekitsi"
     },
 }
 
@@ -127,7 +111,7 @@ class CredentialsFrame(ctk.CTkFrame):
         # Student ID
         self.student_id_label = ctk.CTkLabel(self.content_frame, text=self._t("student_id"))
         self.student_id_label.pack(anchor="w")
-        
+
         self.student_id_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.student_id_frame.pack(fill="x", pady=(5, 10))
         # Mask Student ID by default (shared labs/screens). Users can toggle visibility.
@@ -135,7 +119,7 @@ class CredentialsFrame(ctk.CTkFrame):
             self.student_id_frame, placeholder_text="e.g., 2021/1234 or 20211234", show="*"
         )
         self.student_id_entry.pack(side="left", fill="x", expand=True)
-        
+
         self.student_id_visible = False
         self.student_id_toggle = ctk.CTkButton(
             self.student_id_frame,
@@ -153,17 +137,17 @@ class CredentialsFrame(ctk.CTkFrame):
             self.content_frame, text=self._t("birthday")
         )
         self.birthday_label.pack(anchor="w", pady=(10, 0))
-        
+
         self.birthday_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.birthday_frame.pack(fill="x", pady=5)
-        
+
         self.birthday_entry = ctk.CTkEntry(
-            self.birthday_frame, 
+            self.birthday_frame,
             placeholder_text="e.g., 010199 or 01011999 (1st Jan 1999)",
             show="*"
         )
         self.birthday_entry.pack(side="left", fill="x", expand=True)
-        
+
         self.birthday_visible = False
         self.birthday_toggle = ctk.CTkButton(
             self.birthday_frame,
@@ -193,7 +177,7 @@ class CredentialsFrame(ctk.CTkFrame):
         else:
             self.student_id_entry.configure(show="*")
             self.student_id_toggle.configure(text="Show")
-    
+
     def _toggle_birthday_visibility(self):
         self.birthday_visible = not self.birthday_visible
         if self.birthday_visible:
@@ -348,7 +332,7 @@ class LogFrame(ctk.CTkFrame):
 
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.content_frame.pack(fill="both", expand=True, padx=20, pady=15)
-        
+
         self.title_label = ctk.CTkLabel(
             self.content_frame,
             text="Activity log",
@@ -625,7 +609,7 @@ ICT Society - University of Eswatini"""
 
             self._log("Starting complete network setup...")
             self._log("This may take 30-60 seconds...")
-            
+
             results = network_manager.complete_setup(sid, bday)
 
             # show results
@@ -645,7 +629,7 @@ ICT Society - University of Eswatini"""
                 self._log(f"✗ Proxy: {results['proxy']['message']}")
 
             self._log(f"\n{results['overall']['message']}")
-            
+
             if results["overall"]["success"]:
                 summary = "Setup completed!\n\n"
                 if results["wifi"]["success"]:
@@ -657,7 +641,7 @@ ICT Society - University of Eswatini"""
                         summary += "✓ Device registered (restart required)\n"
                 if results["proxy"]["success"]:
                     summary += "✓ Proxy configured\n"
-                
+
                 msgbox.showinfo("Setup Complete", summary)
             else:
                 msgbox.showerror(
@@ -680,7 +664,7 @@ ICT Society - University of Eswatini"""
                 save_credentials(student_id, birthday)
             except Exception:
                 pass
-            
+
             success, message = network_manager.wifi.connect(student_id, birthday)
 
             if success:
@@ -716,17 +700,17 @@ ICT Society - University of Eswatini"""
                 return
 
             sid, bday = self.credentials_frame.get_credentials()
-            
+
             try:
                 save_credentials(sid, bday)
             except Exception:
                 pass
-            
+
             result = network_manager.registry.register_device(sid, bday)
 
             if result.success:
                 self._log(f"Registration: {result.message}")
-                
+
                 # different popup based on status
                 if result.already_registered:
                     msgbox.showinfo(

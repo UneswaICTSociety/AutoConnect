@@ -7,9 +7,10 @@ Main entry point script that sets up the Python path and launches the applicatio
 This script should be run from the project root directory.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+from typing import Optional
 
 # Get the directory containing this script (project root)
 PROJECT_ROOT = Path(__file__).parent
@@ -55,9 +56,7 @@ if __name__ == "__main__":
         print("  └── src/")
         sys.exit(1)
 
-
     os.chdir(PROJECT_ROOT)
-
 
     exit_code = main()
     sys.exit(exit_code)

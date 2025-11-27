@@ -1,4 +1,4 @@
-__version__ = "1.3.5"
+__version__ = "1.3.7"
 __author__ = "ICT Society - University of Eswatini"
 __description__ = "UNESWA WiFi AutoConnect - University network setup helper"
 

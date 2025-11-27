@@ -270,12 +270,225 @@ class WindowsWiFiManager:
             return False, f"Profile creation error: {e}"
 
     @staticmethod
+    def _connect_wifi_win11_fixed(credentials, password):
+        # windows 11 credential storage is broken for wpa2-enterprise
+        # solution: create profile that auto-fills credentials without storing them
+        # based on reddit post about win11 enterprise wifi issues
+        
+        try:
+            # delete old profile first
+            try:
+                delete_cmd = ["netsh", "wlan", "delete", "profile", f"name={WIFI_SSID}"]
+                run_cmd(delete_cmd, timeout=10)
+            except Exception:
+                pass
+            
+            # create special profile with embedded credentials for win11
+            # this bypasses the credential storage issue
+            profile_xml = f"""<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>{WIFI_SSID}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>{WIFI_SSID}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>auto</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>WPA2</authentication>
+                <encryption>AES</encryption>
+                <useOneX>true</useOneX>
+            </authEncryption>
+            <OneX xmlns="http://www.microsoft.com/networking/OneX/v1">
+                <cacheUserData>true</cacheUserData>
+                <authMode>user</authMode>
+                <singleSignOn>
+                    <type>preLogon</type>
+                    <maxDelay>10</maxDelay>
+                    <allowAdditionalDialogs>true</allowAdditionalDialogs>
+                    <userBasedVirtualLan>false</userBasedVirtualLan>
+                </singleSignOn>
+                <EAPConfig>
+                    <EapHostConfig xmlns="http://www.microsoft.com/provisioning/EapHostConfig">
+                        <EapMethod>
+                            <Type xmlns="http://www.microsoft.com/provisioning/EapCommon">25</Type>
+                            <VendorId xmlns="http://www.microsoft.com/provisioning/EapCommon">0</VendorId>
+                            <VendorType xmlns="http://www.microsoft.com/provisioning/EapCommon">0</VendorType>
+                            <AuthorId xmlns="http://www.microsoft.com/provisioning/EapCommon">0</AuthorId>
+                        </EapMethod>
+                        <Config xmlns="http://www.microsoft.com/provisioning/EapHostConfig">
+                            <Eap xmlns="http://www.microsoft.com/provisioning/BaseEapConnectionPropertiesV1">
+                                <Type>25</Type>
+                                <EapType xmlns="http://www.microsoft.com/provisioning/MsPeapConnectionPropertiesV1">
+                                    <ServerValidation>
+                                        <DisableUserPromptForServerValidation>true</DisableUserPromptForServerValidation>
+                                        <ServerNames></ServerNames>
+                                        <TrustedRootCA></TrustedRootCA>
+                                    </ServerValidation>
+                                    <FastReconnect>true</FastReconnect>
+                                    <InnerEapOptional>false</InnerEapOptional>
+                                    <Eap xmlns="http://www.microsoft.com/provisioning/BaseEapConnectionPropertiesV1">
+                                        <Type>26</Type>
+                                        <EapType xmlns="http://www.microsoft.com/provisioning/MsChapV2ConnectionPropertiesV1">
+                                            <UseWinLogonCredentials>false</UseWinLogonCredentials>
+                                        </EapType>
+                                    </Eap>
+                                    <EnableQuarantineChecks>false</EnableQuarantineChecks>
+                                    <RequireCryptoBinding>false</RequireCryptoBinding>
+                                    <PeapExtensions>
+                                        <PerformServerValidation xmlns="http://www.microsoft.com/provisioning/MsPeapConnectionPropertiesV2">false</PerformServerValidation>
+                                        <AcceptServerName xmlns="http://www.microsoft.com/provisioning/MsPeapConnectionPropertiesV2">false</AcceptServerName>
+                                    </PeapExtensions>
+                                </EapType>
+                            </Eap>
+                        </Config>
+                    </EapHostConfig>
+                </EAPConfig>
+            </OneX>
+        </security>
+    </MSM>
+</WLANProfile>"""
+            
+            # write profile to temp file
+            temp_file = Path(tempfile.gettempdir()) / f"{WIFI_SSID}_win11.xml"
+            
+            with open(temp_file, "w", encoding="utf-8") as f:
+                f.write(profile_xml)
+            
+            # add profile
+            success, stdout, stderr = run_cmd([
+                "netsh", "wlan", "add", "profile", 
+                f"filename={temp_file}", "user=current"
+            ], timeout=15)
+            
+            temp_file.unlink(missing_ok=True)
+            
+            if not success:
+                return False, f"Failed to add profile: {stderr}"
+            
+            # store credentials using the proper windows eap method
+            if store_windows_eap_credentials:
+                try:
+                    cred_success, cred_msg = store_windows_eap_credentials(
+                        WIFI_SSID, credentials.student_id, password
+                    )
+                    print(f"[WiFi] Credential storage: {cred_success} - {cred_msg}")
+                except Exception as e:
+                    print(f"[WiFi] Credential storage failed: {e}")
+            
+            # also try cmdkey as backup
+            try:
+                run_cmd([
+                    "cmdkey", "/generic", f"TERMSRV/{WIFI_SSID}",
+                    "/user", credentials.student_id,
+                    "/pass", password
+                ], timeout=10)
+            except Exception:
+                pass
+            
+            # disconnect first
+            try:
+                run_cmd(["netsh", "wlan", "disconnect"], timeout=5)
+                time.sleep(1)
+            except Exception:
+                pass
+            
+            # connect to wifi
+            connect_cmd = ["netsh", "wlan", "connect", f"ssid={WIFI_SSID}", f"name={WIFI_SSID}"]
+            success, stdout, stderr = run_cmd(connect_cmd, timeout=WIFI_CONNECT_TIMEOUT)
+            
+            if success:
+                # windows 11 will still show credential prompt sometimes
+                # show the credentials immediately so user knows what to enter
+                try:
+                    import threading
+                    import tkinter as tk
+                    import tkinter.messagebox as msgbox
+                    
+                    def show_credentials():
+                        time.sleep(1)  # let connection start first
+                        
+                        # create a simple window with credentials
+                        root = tk.Tk()
+                        root.title("WiFi Credentials")
+                        root.geometry("400x200")
+                        root.attributes("-topmost", True)
+                        
+                        tk.Label(root, text="Windows 11 WiFi Credentials", font=("Arial", 12, "bold")).pack(pady=10)
+                        tk.Label(root, text="If Windows asks for credentials, use these:", font=("Arial", 10)).pack(pady=5)
+                        
+                        frame = tk.Frame(root)
+                        frame.pack(pady=10)
+                        
+                        tk.Label(frame, text="Username:", font=("Arial", 10, "bold")).grid(row=0, column=0, sticky="e", padx=5)
+                        username_entry = tk.Entry(frame, font=("Arial", 10), width=20)
+                        username_entry.insert(0, credentials.student_id)
+                        username_entry.grid(row=0, column=1, padx=5)
+                        
+                        tk.Label(frame, text="Password:", font=("Arial", 10, "bold")).grid(row=1, column=0, sticky="e", padx=5)
+                        password_entry = tk.Entry(frame, font=("Arial", 10), width=20)
+                        password_entry.insert(0, password)
+                        password_entry.grid(row=1, column=1, padx=5)
+                        
+                        def copy_username():
+                            root.clipboard_clear()
+                            root.clipboard_append(credentials.student_id)
+                        
+                        def copy_password():
+                            root.clipboard_clear()
+                            root.clipboard_append(password)
+                        
+                        tk.Button(frame, text="Copy", command=copy_username).grid(row=0, column=2, padx=5)
+                        tk.Button(frame, text="Copy", command=copy_password).grid(row=1, column=2, padx=5)
+                        
+                        tk.Button(root, text="Close", command=root.destroy, font=("Arial", 10)).pack(pady=10)
+                        
+                        # auto-close after 30 seconds
+                        root.after(30000, root.destroy)
+                        
+                        root.mainloop()
+                    
+                    thread = threading.Thread(target=show_credentials, daemon=True)
+                    thread.start()
+                except Exception:
+                    # fallback to simple message box
+                    try:
+                        def show_simple():
+                            time.sleep(2)
+                            msgbox.showinfo(
+                                "WiFi Credentials Ready",
+                                f"Windows 11 may ask for credentials.\n\n"
+                                f"Username: {credentials.student_id}\n"
+                                f"Password: {password}\n\n"
+                                f"Copy these if needed!"
+                            )
+                        threading.Thread(target=show_simple, daemon=True).start()
+                    except Exception:
+                        pass
+                
+                # wait for connection with longer timeout for win11
+                for i in range(25):
+                    time.sleep(2)
+                    if WindowsWiFiManager.is_connected_to_network():
+                        return True, "Connected successfully!"
+                
+                return False, "Connection may be in progress. Check if credentials were entered correctly."
+            else:
+                return False, f"Connection failed: {stderr}"
+                
+        except Exception as e:
+            return False, f"Connection error: {e}"
+
+    @staticmethod
     def _connect_wifi_simple(credentials, password):
+        # fallback simple method for older windows versions
         try:
             profile_success, profile_msg = WindowsWiFiManager.add_wifi_profile(credentials)
             if not profile_success:
                 return False, f"Couldn't set up WiFi profile: {profile_msg}"
-
 
             try:
                 run_cmd(["netsh", "wlan", "disconnect"], timeout=5)
@@ -284,11 +497,9 @@ class WindowsWiFiManager:
                 pass
 
             connect_cmd = ["netsh", "wlan", "connect", f"ssid={WIFI_SSID}", f"name={WIFI_SSID}"]
-
             success, stdout, stderr = run_cmd(connect_cmd, timeout=WIFI_CONNECT_TIMEOUT)
 
             if success:
-
                 try:
                     import threading
                     def show_credential_prompt():
@@ -307,13 +518,12 @@ class WindowsWiFiManager:
                 except Exception:
                     pass
 
-
                 for i in range(15):
                     time.sleep(2)
                     if WindowsWiFiManager.is_connected_to_network():
                         return True, "Connected successfully!"
                 
-                return (False, "Connection started. Please enter your credentials when Windows prompts you.")
+                return False, "Connection started. Please enter your credentials when Windows prompts you."
             else:
                 return False, f"Connection failed: {stderr}"
 
@@ -458,15 +668,18 @@ class WindowsWiFiManager:
         credentials: WiFiCredentials, password
     ):
         
-        from src.utils.system_utils import should_use_native_wifi_connection
+        from src.utils.system_utils import system_info
         
         try:
-            # Check if we should use the simple modern method
-            if should_use_native_wifi_connection():
-                print(f"[WiFi] trying simple method (win11 stuff)")
+            # windows 11 needs special handling due to credential storage issues
+            if system_info.is_windows_11_or_newer():
+                print(f"[WiFi] using windows 11 fixed method")
+                return WindowsWiFiManager._connect_wifi_win11_fixed(credentials, password)
+            elif system_info.should_use_native_wifi_connection():
+                print(f"[WiFi] trying simple method (modern windows)")
                 return WindowsWiFiManager._connect_wifi_simple(credentials, password)
             else:
-                print(f"[WiFi] using old method (legacy windows)")
+                print(f"[WiFi] using legacy method (old windows)")
                 return WindowsWiFiManager._connect_wifi_legacy(credentials, password)
         
         except Exception as e:
@@ -627,96 +840,122 @@ class LinuxWiFiManager:
     
 
     @staticmethod
+    def _try_connection_method(method_name, credentials, password):
+        # networkmanager on linux (gnome/cosmic/kde) loops forever if settings are wrong
+        # apologies to gnome for... you know, not being nice
+        # based on https://askubuntu.com/questions/262491
+        
+        methods = {
+            # method 1: peap with proper phase settings (most common)
+            "peap": [
+                "nmcli", "connection", "add",
+                "type", "wifi",
+                "con-name", WIFI_SSID,
+                "ifname", "*",
+                "ssid", WIFI_SSID,
+                "wifi-sec.key-mgmt", "wpa-eap",
+                "802-1x.eap", "peap",
+                "802-1x.phase2-auth", "mschapv2",
+                "802-1x.identity", credentials.get_username(),
+                "802-1x.password", password,
+                # critical - no cert validation or networkmanager loops
+                "802-1x.system-ca-certs", "no",
+                # store password
+                "802-1x.password-flags", "0",
+                "connection.autoconnect", "yes",
+            ],
+            # method 2: ttls with anonymous identity
+            # based on the typical connection method that normally works.
+            # should never reach this point
+            "ttls": [
+                "nmcli", "connection", "add",
+                "type", "wifi",
+                "con-name", WIFI_SSID,
+                "ifname", "*",
+                "ssid", WIFI_SSID,
+                "wifi-sec.key-mgmt", "wpa-eap",
+                "802-1x.eap", "ttls",
+                "802-1x.phase2-auth", "mschapv2",
+                "802-1x.identity", credentials.get_username(),
+                "802-1x.anonymous-identity", credentials.get_username(),
+                "802-1x.password", password,
+                "802-1x.system-ca-certs", "no",
+                "802-1x.password-flags", "0",
+                "connection.autoconnect", "yes",
+            ],
+            # method 3: peap with md5 (some older networks such as this one)
+            "peap-md5": [
+                "nmcli", "connection", "add",
+                "type", "wifi",
+                "con-name", WIFI_SSID,
+                "ifname", "*",
+                "ssid", WIFI_SSID,
+                "wifi-sec.key-mgmt", "wpa-eap",
+                "802-1x.eap", "peap",
+                "802-1x.phase2-auth", "md5",
+                "802-1x.identity", credentials.get_username(),
+                "802-1x.password", password,
+                "802-1x.system-ca-certs", "no",
+                "802-1x.password-flags", "0",
+                "connection.autoconnect", "yes",
+            ],
+        }
+        
+        if method_name not in methods:
+            return False, f"Unknown method: {method_name}"
+        
+        cmd = methods[method_name]
+        
+        success, stdout, stderr = run_cmd(cmd, timeout=WIFI_CONNECT_TIMEOUT)
+        
+        if not success:
+            return False, stderr
+        
+        # activate connection
+        activate_cmd = ["nmcli", "connection", "up", WIFI_SSID]
+        activate_success, activate_stdout, activate_stderr = run_cmd(
+            activate_cmd, timeout=WIFI_CONNECT_TIMEOUT
+        )
+        
+        if activate_success:
+            time.sleep(3)
+            if LinuxWiFiManager.is_connected_to_network():
+                return True, f"Connected using {method_name}!"
+            else:
+                return False, "Authentication failed"
+        else:
+            return False, activate_stderr
+
+    @staticmethod
     def connect_to_wifi(
         credentials: WiFiCredentials, password
     ):
         
         try:
-            # delete old connection first, might have bad creds
+            # delete old connection first
             LinuxWiFiManager._remove_existing_connection(WIFI_SSID)
             
-            # simple connection - networkmanager handles the rest
-            # device wifi connect is smarter than connection add
-            cmd = [
-                "nmcli",
-                "device",
-                "wifi",
-                "connect",
-                WIFI_SSID,
-                "password",
-                password,
-            ]
+            # try different methods in order of most likely to work
+            methods_to_try = ["peap", "ttls", "peap-md5"]
             
-            # networkmanager needs username for wpa2-enterprise
-            # using connection add approach but simplified
-            
-            cmd = [
-                "nmcli",
-                "connection",
-                "add",
-                "type",
-                "wifi",
-                "con-name",
-                WIFI_SSID,
-                "ssid",
-                WIFI_SSID,
-                "wifi-sec.key-mgmt",
-                "wpa-eap",
-                "802-1x.identity",
-                credentials.get_username(),
-                "802-1x.anonymous-identity",
-                credentials.get_username(),
-                "802-1x.password",
-                password,
-                "802-1x.eap",
-                "ttls",
-                "802-1x.phase2-auth",
-                "mschapv2",
-                "802-1x.system-ca-certs",
-                "no",
-                "802-1x.password-flags",
-                "0",
-                "connection.autoconnect",
-                "yes",
-            ]
-
-            success, stdout, stderr = run_cmd(cmd, timeout=WIFI_CONNECT_TIMEOUT)
-
-            if success:
-                # connection created, now activate
-                activate_cmd = ["nmcli", "connection", "up", WIFI_SSID]
-                activate_success, activate_stdout, activate_stderr = run_cmd(
-                    activate_cmd, timeout=WIFI_CONNECT_TIMEOUT
+            last_error = ""
+            for method in methods_to_try:
+                print(f"[WiFi] Trying {method} method...")
+                
+                success, message = LinuxWiFiManager._try_connection_method(
+                    method, credentials, password
                 )
                 
-                if activate_success:
-                    # wait a bit for connection
-                    time.sleep(3)
-                    if LinuxWiFiManager.is_connected_to_network():
-                        return True, "Connected successfully!"
-                    else:
-                        return (False, "Connection created but authentication failed - check your credentials")
-                else:
-                    if "authentication" in activate_stderr.lower():
-                        return False, "Authentication failed - double-check your student ID and birthday"
-                    else:
-                        return False, f"Couldn't activate connection: {activate_stderr}"
-            else:
-                # connection creation failed
-                if "already exists" in stderr.lower():
-                    # connection exists already, just activate
-                    activate_cmd = ["nmcli", "connection", "up", WIFI_SSID]
-                    activate_success, activate_stdout, activate_stderr = run_cmd(
-                        activate_cmd, timeout=WIFI_CONNECT_TIMEOUT
-                    )
-                    if activate_success:
-                        return True, "Connected successfully!"
-                    else:
-                        # existing connection broken, delete and retry
-                        LinuxWiFiManager._remove_existing_connection(WIFI_SSID)
-                        return LinuxWiFiManager.connect_to_wifi(credentials, password)
-                else:
-                    return False, f"Connection failed: {stderr}"
+                if success:
+                    return True, message
+                
+                # method failed, clean up and try next
+                last_error = message
+                LinuxWiFiManager._remove_existing_connection(WIFI_SSID)
+                time.sleep(1)
+            
+            # all methods failed
+            return False, f"All connection methods failed. Last error: {last_error}"
 
         except Exception as e:
             return False, f"WiFi connection error: {e}"

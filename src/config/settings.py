@@ -4,7 +4,7 @@ import random
 
 # Application Information
 APP_NAME = "UNESWA WiFi AutoConnect"
-VERSION = "1.3.5"
+VERSION = "1.3.7"
 DEVELOPER = "ICT Society - University of Eswatini"
 
 # Network Configuration

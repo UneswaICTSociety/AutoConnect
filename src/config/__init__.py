@@ -1,7 +1,7 @@
 from src.config.settings import *
 from src.config.translations import translator, t, LANG_ENGLISH, LANG_SISWATI
 
-__version__ = "1.3.5"
+__version__ = "1.3.7"
 __author__ = "ICT Society - University of Eswatini"
 __description__ = "Configuration management for UNESWA WiFi AutoConnect"
 
